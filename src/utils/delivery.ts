@@ -9,7 +9,32 @@ export function getRemainingMs(
 ): number {
   if (order.received) return 0;
   const deadline = order.createdAt + order.estimatedMinutes * 60 * 1000;
-  return Math.max(0, deadline - now);
+  return deadline - now;
+}
+
+export function getOverdueMs(
+  order: {
+    createdAt: number;
+    estimatedMinutes: number;
+    received: boolean;
+  },
+  now: number = Date.now()
+): number {
+  if (order.received) return 0;
+  const deadline = order.createdAt + order.estimatedMinutes * 60 * 1000;
+  return Math.max(0, now - deadline);
+}
+
+export function isOverdue(
+  order: {
+    createdAt: number;
+    estimatedMinutes: number;
+    received: boolean;
+  },
+  now: number = Date.now()
+): boolean {
+  if (order.received) return false;
+  return now > order.createdAt + order.estimatedMinutes * 60 * 1000;
 }
 
 export function getRemainingRatio(
@@ -63,9 +88,11 @@ function rgbToString(c: RGB): string {
 
 export function getBarColor(
   ratio: number,
-  received: boolean
+  received: boolean,
+  overdue: boolean = false
 ): string {
   if (received) return "rgb(107, 114, 128)";
+  if (overdue) return rgbToString(COLOR_RED);
   if (ratio > 0.5) {
     const t = 1 - (ratio - 0.5) / 0.5;
     return rgbToString(lerpColor(COLOR_BLUE, COLOR_YELLOW, t));
@@ -76,9 +103,13 @@ export function getBarColor(
 
 export function getBarGlow(
   ratio: number,
-  received: boolean
+  received: boolean,
+  overdue: boolean = false
 ): string {
   if (received) return "none";
-  const color = getBarColor(ratio, false);
+  const color = getBarColor(ratio, false, overdue);
+  if (overdue) {
+    return `0 0 25px ${color.replace("rgb", "rgba").replace(")", ", 0.5)")}`;
+  }
   return `0 0 20px ${color.replace("rgb", "rgba").replace(")", ", 0.3)")}`;
 }

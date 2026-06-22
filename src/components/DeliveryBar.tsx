@@ -3,24 +3,52 @@ import type { DeliveryOrder } from "@/types";
 import {
   getRemainingMs,
   getRemainingRatio,
+  getOverdueMs,
+  isOverdue,
   getBarColor,
   getBarGlow,
 } from "@/utils/delivery";
 import { useDeliveryStore } from "@/store/deliveryStore";
-import { Check, X } from "lucide-react";
+import { Check, X, AlertTriangle } from "lucide-react";
 
 interface DeliveryBarProps {
   order: DeliveryOrder;
 }
 
-function formatTimeText(ms: number, name: string, received: boolean): { main: string; sub: string } {
-  if (received || ms <= 0) {
+function formatOverdueText(overdueMs: number): string {
+  const totalSeconds = Math.floor(overdueMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `已超时 ${hours} 小时 ${minutes} 分`;
+  }
+  if (minutes > 0) {
+    return `已超时 ${minutes} 分 ${seconds} 秒`;
+  }
+  return `已超时 ${seconds} 秒`;
+}
+
+function formatTimeText(
+  remainingMs: number,
+  overdueMs: number,
+  name: string,
+  received: boolean
+): { main: string; sub: string } {
+  if (received) {
     return {
       main: `${name} 已送达`,
       sub: "点击删除",
     };
   }
-  const totalSeconds = Math.ceil(ms / 1000);
+  if (overdueMs > 0) {
+    return {
+      main: `${name} 已超时`,
+      sub: formatOverdueText(overdueMs),
+    };
+  }
+  const totalSeconds = Math.ceil(remainingMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
 
@@ -62,10 +90,18 @@ export default function DeliveryBar({ order }: DeliveryBarProps) {
     { ...order, received: order.received, receivedAt: order.receivedAt },
     now
   );
+  const overdue = getOverdueMs(order, now);
+  const isOverdueOrder = isOverdue(order, now);
   const ratio = getRemainingRatio(order, now);
-  const bgColor = getBarColor(ratio, order.received);
-  const glow = getBarGlow(ratio, order.received);
-  const { main: mainText, sub: subText } = formatTimeText(remaining, order.name, order.received);
+  const safeRatio = Math.max(0, ratio);
+  const bgColor = getBarColor(safeRatio, order.received, isOverdueOrder);
+  const glow = getBarGlow(safeRatio, order.received, isOverdueOrder);
+  const { main: mainText, sub: subText } = formatTimeText(
+    remaining,
+    overdue,
+    order.name,
+    order.received
+  );
 
   const handleClick = useCallback(() => {
     if (!order.received) {
@@ -81,7 +117,7 @@ export default function DeliveryBar({ order }: DeliveryBarProps) {
     [order.id, removeOrder]
   );
 
-  const isUrgent = !order.received && ratio < 0.25;
+  const isUrgent = !order.received && (safeRatio < 0.25 || isOverdueOrder);
 
   return (
     <div
@@ -121,6 +157,8 @@ export default function DeliveryBar({ order }: DeliveryBarProps) {
         <div className="flex items-center gap-1 shrink-0">
           {order.received ? (
             <Check className="w-3.5 h-3.5 text-white/40" />
+          ) : isOverdueOrder ? (
+            <AlertTriangle className="w-3.5 h-3.5 text-white animate-pulse" />
           ) : (
             <div
               className={`
@@ -143,11 +181,15 @@ export default function DeliveryBar({ order }: DeliveryBarProps) {
         </div>
       </div>
 
-      {!order.received && ratio > 0 && (
+      {!order.received && !isOverdueOrder && safeRatio > 0 && (
         <div
           className="absolute bottom-0 left-0 h-0.5 rounded-full bg-white/25 transition-all duration-1000 ease-linear"
-          style={{ width: `${ratio * 100}%` }}
+          style={{ width: `${safeRatio * 100}%` }}
         />
+      )}
+
+      {isOverdueOrder && !order.received && (
+        <div className="absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-white/40 animate-pulse" />
       )}
     </div>
   );
